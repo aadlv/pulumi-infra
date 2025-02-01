@@ -1,0 +1,141 @@
+name: Build docker image, push to ECR and Deploy to ECS
+
+on:
+  push:
+    branches:
+      - main
+    
+env:
+  AWS_REGION: eu-central-1
+  AWS_REPOSITORY_PREF: 165111792849.dkr.ecr.eu-central-1.amazonaws.com/repo
+  ECS_CLUSTER: cluster-name
+  FE_URL: 
+  BE_URL: 
+
+permissions:
+  id-token: write
+  contents: read
+  
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 #v3.2.0
+        id: changes
+        with:
+          filters: |
+            server:
+              - 'server/**'
+              - '.github/workflows/**'
+              - 'infra/**'
+            app:
+              - 'app/**'
+              - '.github/workflows/**'
+              - '/infra/**'
+
+      - name: Set short SHA
+        id: sha_short
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      
+      # If PR tag PR number, if not PR tag branch name
+      - name: Set image tag
+        id: image_tag
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "IMAGE_TAG=pr${{ github.event.number }}-${{ steps.sha_short.outputs.sha_short }}" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE_TAG=${GITHUB_REF##*/}-${{ steps.sha_short.outputs.sha_short }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@8c3f20df09ac63af7b3ae3d7c91f105f857d8497 #v3.0.1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@c220c0d4382b5d72ffe60b10304b906b21e53786 #v2.0.1
+        with:
+          mask-password: "true"
+
+      - name: "[SERVER] Build, tag, and push image to Amazon ECR"
+        if: steps.changes.outputs.server == 'true'
+        id: build-backend-image
+        working-directory: ./server
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: ${{ env.AWS_REPOSITORY_PREF }}/server
+          IMAGE_TAG: ${{ steps.image_tag.outputs.image_tag }}
+        run: |
+          docker build -f Dockerfile -t $IMAGE_TAG .
+          docker tag $IMAGE_TAG $REPOSITORY:$IMAGE_TAG
+          docker push $REPOSITORY:$IMAGE_TAG
+          echo "image_backend=$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: "[SERVER] Fill in the new image ID in the Amazon ECS task definition"
+        if: steps.changes.outputs.server == 'true'
+        id: task-def-backend
+        uses: aws-actions/amazon-ecs-render-task-definition@c804dfbdd57f713b6c079302a4c01db7017a36fc
+        with:
+          task-definition: ./infra/task-definition-backend.json
+          container-name: backend-container
+          image: ${{ steps.build-backend-image.outputs.image_backend }}
+          environment-variables: |
+            FE_URL=${{ env.FE_URL }}
+            DB_HOST=${{ secrets.DB_HOST }}
+            DB_PORT=5432
+            DB_USER=${{ secrets.DB_USER }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            SSL_MODE=require
+            DB_NAME=${{ secrets.DB_NAME }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            EMAIL_CONFIRMATION_URL=${{ secrets.EMAIL_CONFIRMATION_URL }}
+            SET_NEW_PASSWORD_URL=${{ secrets.SET_NEW_PASSWORD_URL }}
+
+      - name: "[SERVER] Deploy Amazon ECS task definition"
+        if: steps.changes.outputs.server == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@df9643053eda01f169e64a0e60233aacca83799a
+        with:
+          task-definition: ${{ steps.task-def-backend.outputs.task-definition }}
+          service: backend-service
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: false
+
+      - name: "[APP] Build, tag, and push image to Amazon ECR"
+        if: steps.changes.outputs.app == 'true'
+        id: build-frontend-image
+        working-directory: ./app
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: ${{ env.AWS_REPOSITORY_PREF }}/app
+          IMAGE_TAG: ${{ steps.image_tag.outputs.image_tag }}
+        run: |
+          docker build -f Dockerfile -t $IMAGE_TAG .
+          docker tag $IMAGE_TAG $REPOSITORY:$IMAGE_TAG
+          docker push $REPOSITORY:$IMAGE_TAG
+          echo "image_frontend=$REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: "[APP] Fill in the new image ID in the Amazon ECS task definition"
+        if: steps.changes.outputs.app == 'true'
+        id: task-def-frontend
+        uses: aws-actions/amazon-ecs-render-task-definition@c804dfbdd57f713b6c079302a4c01db7017a36fc
+        with:
+          task-definition: ./infra/task-definition-frontend.json
+          container-name: frontend-container
+          image: ${{ steps.build-frontend-image.outputs.image_frontend }}
+            BE_URL=${{ env.BE_URL }}
+
+      - name: "[APP] Deploy Amazon ECS task definition"
+        if: steps.changes.outputs.app == 'true'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@df9643053eda01f169e64a0e60233aacca83799a
+        with:
+          task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
+          service: app-service
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: false
+        

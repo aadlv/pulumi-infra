@@ -1,0 +1,65 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:eu-central-1:165111792849:task-definition/frontend-task-definition:2",
+    "containerDefinitions": [
+        {
+            "name": "moba-project-frontend",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 80,
+                    "hostPort": 80,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/app",
+                    "mode": "non-blocking",
+                    "awslogs-create-group": "true",
+                    "max-buffer-size": "25m",
+                    "awslogs-region": "eu-central-1",
+                    "awslogs-stream-prefix": "awslogs-example"
+                }
+            },
+            "systemControls": []
+        }
+    ],
+    "family": "frontend-task-definition",
+    "executionRoleArn": "arn:aws:iam::165111792849:role/moba-project-task-exec-role-ccc1dc1",
+    "networkMode": "awsvpc",
+    "revision": 2,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "FARGATE"
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512",
+    "registeredAt": "2025-02-04T09:03:19.190Z",
+    "registeredBy": "arn:aws:iam::165111792849:user/aadlv",
+    "tags": []
+}
