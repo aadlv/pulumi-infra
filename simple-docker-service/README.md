@@ -29,3 +29,9 @@ docker run -d --rm --name web-test -p 80:8000 aadlv-test:latest
 $ curl -I localhost
 HTTP/1.0 200 OK
 ```
+
+### Stop web server
+
+```sh
+docker stop web-test
+```
