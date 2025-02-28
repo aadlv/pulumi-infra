@@ -1,4 +1,6 @@
 # Pulumi Infrastructure
+![Pulumi](https://img.shields.io/badge/Pulumi-infrastructure-blue?logo=pulumi)
+![AWS](https://img.shields.io/badge/AWS-cloud-orange?logo=amazon-aws)
 
 ## Overview
 
